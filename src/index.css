@@ -1,0 +1,265 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Jost:wght@300;400;500;600&family=Caveat:wght@400;500;600&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  /* ── Palette ───────────────────────────────────────────────
+     warm cream · dusty blush · muted sage · warm brown · taupe */
+  --color-cream: #fcf8f3;
+  --color-cream-deep: #f5ede2;
+  --color-shell: #fffdfa;
+
+  --color-blush: #e9c9c3;
+  --color-blush-soft: #f6e6e2;
+  --color-blush-deep: #cf9d94;
+
+  --color-sage: #a9bda4;
+  --color-sage-soft: #e2eade;
+  --color-sage-deep: #7f9779;
+
+  --color-brown: #4c3d33;
+  --color-brown-soft: #7c6a5c;
+  --color-brown-faint: #a6968a;
+
+  --color-taupe: #d9cdbf;
+  --color-taupe-soft: #ece2d6;
+  --color-line: #ebe0d3;
+
+  --color-gold: #c9a86c;
+
+  /* ── Type ── */
+  --font-serif: 'Cormorant Garamond', 'Iowan Old Style', Georgia, serif;
+  --font-sans: 'Jost', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-hand: 'Caveat', 'Bradley Hand', cursive;
+
+  /* ── Radii & shadow ── */
+  --radius-xs: 0.5rem;
+  --radius-sm: 0.75rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.375rem;
+  --radius-xl: 1.75rem;
+  --radius-2xl: 2.25rem;
+
+  --shadow-soft: 0 1px 2px rgb(76 61 51 / 0.03), 0 8px 24px -12px rgb(76 61 51 / 0.12);
+  --shadow-lift: 0 2px 4px rgb(76 61 51 / 0.04), 0 18px 40px -18px rgb(76 61 51 / 0.22);
+
+  --animate-fade-up: fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-bloom: bloom 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bloom {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+    /* stop iOS inflating type when the phone is rotated */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    /* no rubber-band chaining — reads as an app rather than a page */
+    overscroll-behavior-y: none;
+    background-color: var(--color-cream);
+    background-image:
+      radial-gradient(ellipse 70% 55% at 12% -8%, #f7e8e3 0%, transparent 60%),
+      radial-gradient(ellipse 60% 50% at 92% 4%, #e8efe4 0%, transparent 62%),
+      radial-gradient(ellipse 80% 40% at 50% 108%, #f5ece0 0%, transparent 70%);
+    background-attachment: fixed;
+    color: var(--color-brown);
+    font-family: var(--font-sans);
+    font-weight: 400;
+    letter-spacing: 0.005em;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    letter-spacing: 0.005em;
+  }
+
+  ::selection {
+    background: var(--color-blush-soft);
+    color: var(--color-brown);
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font-family: inherit;
+  }
+
+  /* Softly hide scrollbars but keep scrolling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-taupe);
+    border-radius: 99px;
+  }
+}
+
+@utility eyebrow {
+  font-size: 0.6875rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--color-brown-faint);
+}
+
+@utility paper {
+  background: color-mix(in srgb, var(--color-shell) 82%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--color-line);
+  box-shadow: var(--shadow-soft);
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ── Radix enter/exit animations (kept in plain CSS, no plugin needed) ── */
+@keyframes veil-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes veil-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.anim-veil[data-state='open'] {
+  animation: veil-in 0.22s ease-out;
+}
+.anim-veil[data-state='closed'] {
+  animation: veil-out 0.16s ease-in;
+}
+@keyframes pop-center-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.anim-dialog[data-state='open'] {
+  animation: pop-center-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.anim-dialog[data-state='closed'] {
+  animation: veil-out 0.14s ease-in;
+}
+.anim-pop[data-state='open'] {
+  animation: pop-in 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.anim-pop[data-state='closed'] {
+  animation: veil-out 0.14s ease-in;
+}
+
+/* ── Installed / home-screen behaviour ──────────────────────────
+   Written outside @layer on purpose: these must beat Tailwind's
+   utilities (e.g. `text-sm` on inputs), which live in a layer. */
+
+/* iOS zooms the whole page when a focused field is under 16px.
+   Below the md breakpoint every control gets 16px so tapping a
+   habit note or journal line never yanks the layout around. */
+@media (max-width: 767px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+/* Long-press on a control shouldn't offer copy/paste or selection */
+button,
+[role='button'],
+a {
+  -webkit-touch-callout: none;
+}
+
+button,
+[role='button'] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Home-screen launches sit under the status bar / home indicator.
+   These insets are 0 in a normal browser tab, so they cost nothing. */
+.pad-safe-top {
+  padding-top: calc(0.875rem + env(safe-area-inset-top));
+}
+
+.pad-safe-bottom {
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 768px) {
+  .pad-safe-bottom {
+    padding-bottom: 4rem;
+  }
+}
+
+/* ── react-day-picker overrides that are easier in plain CSS ── */
+.rdp-root {
+  --rdp-accent-color: var(--color-sage-deep);
+  --rdp-accent-background-color: var(--color-sage-soft);
+}
