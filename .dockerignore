@@ -11,7 +11,6 @@ dev-dist
 .vite
 *.tsbuildinfo
 coverage
-deploy
 README.md
 *.log
 .env

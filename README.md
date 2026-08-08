@@ -110,35 +110,20 @@ runs on a mini PC or a Pi cluster either way. The workflow is
 `.github/workflows/publish-image.yml` and authenticates with the built-in `GITHUB_TOKEN` —
 there's no secret to create.
 
-Run it directly:
+Run it:
 
 ```bash
 docker run --rm -p 8080:8080 ghcr.io/seinhtettan/seventyfivesoft:latest
 ```
 
-Or apply the manifest:
+nginx serving static files on port 8080 as uid 101 — no backend, no database, no
+environment config. All data lives in each browser, so it's stateless and idles at a few
+MB. `/healthz` returns 200 for probes.
 
-```bash
-kubectl apply -f deploy/k8s.yaml
-```
-
-The image is nginx serving static files — no backend, no database, no environment
-config. All data lives in each browser, so replicas are stateless and it idles at a few
-MB of memory.
-
-### Two things to know before it works end-to-end
-
-**The GHCR package starts private.** Kubernetes can't pull it until you either flip it to
-public (repo → Packages → the package → Package settings → Change visibility) or create a
-pull secret and uncomment `imagePullSecrets` in `deploy/k8s.yaml`:
-
-```bash
-kubectl create secret docker-registry ghcr-pull --docker-server=ghcr.io --docker-username=seinhtettan --docker-password=<a PAT with read:packages>
-```
-
-**Serve it over HTTPS.** Service workers don't register on plain `http` (only `localhost`
-is exempt), so without TLS you lose offline support and Add to Home Screen. The commented
-Ingress in `deploy/k8s.yaml` is the shape of it.
+Two things to know: the GHCR package **publishes private by default**, so grant pull
+access or flip it to public before something else tries to pull it. And serve it over
+**HTTPS** — service workers don't register on plain `http` (only `localhost` is exempt),
+so without TLS you lose offline support and Add to Home Screen.
 
 ### Cache headers
 
