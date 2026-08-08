@@ -1,0 +1,19 @@
+# Anything not needed to produce dist/ — keeps the build context small and
+# stops host artefacts leaking into the image.
+.git
+.github
+.gitignore
+.claude
+node_modules
+dist
+dist-ssr
+dev-dist
+.vite
+*.tsbuildinfo
+coverage
+deploy
+README.md
+*.log
+.env
+.env.*
+.DS_Store

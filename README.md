@@ -97,6 +97,56 @@ it automatically for SPAs; nginx needs `try_files $uri /index.html`.
 Because everything is stored locally, use **Settings → Export a backup** now and then; that
 file is the only copy if the device is wiped or you clear site data.
 
+## Self-hosting (Docker / Kubernetes)
+
+Every push to `master` builds a multi-arch image and publishes it to GHCR:
+
+```
+ghcr.io/seinhtettan/seventyfivesoft:latest
+```
+
+Also tagged `sha-<commit>` for pinning. Built for `linux/amd64` and `linux/arm64`, so it
+runs on a mini PC or a Pi cluster either way. The workflow is
+`.github/workflows/publish-image.yml` and authenticates with the built-in `GITHUB_TOKEN` —
+there's no secret to create.
+
+Run it directly:
+
+```bash
+docker run --rm -p 8080:8080 ghcr.io/seinhtettan/seventyfivesoft:latest
+```
+
+Or apply the manifest:
+
+```bash
+kubectl apply -f deploy/k8s.yaml
+```
+
+The image is nginx serving static files — no backend, no database, no environment
+config. All data lives in each browser, so replicas are stateless and it idles at a few
+MB of memory.
+
+### Two things to know before it works end-to-end
+
+**The GHCR package starts private.** Kubernetes can't pull it until you either flip it to
+public (repo → Packages → the package → Package settings → Change visibility) or create a
+pull secret and uncomment `imagePullSecrets` in `deploy/k8s.yaml`:
+
+```bash
+kubectl create secret docker-registry ghcr-pull --docker-server=ghcr.io --docker-username=seinhtettan --docker-password=<a PAT with read:packages>
+```
+
+**Serve it over HTTPS.** Service workers don't register on plain `http` (only `localhost`
+is exempt), so without TLS you lose offline support and Add to Home Screen. The commented
+Ingress in `deploy/k8s.yaml` is the shape of it.
+
+### Cache headers
+
+`docker/nginx.conf` deliberately splits caching in two: `/assets/*` is fingerprinted by
+Vite so it's `immutable` for a year, while `sw.js`, `registerSW.js`, `index.html` and the
+manifest are `no-cache`. If the service worker or the shell were cached, an installed
+home-screen app would keep booting the old build and never see a deploy.
+
 ## Stack
 
 Vite · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui-style Radix primitives ·
