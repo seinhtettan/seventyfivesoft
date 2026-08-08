@@ -10,7 +10,7 @@ export function getDay(days: AppState['days'], key: string): DayRecord {
   return days[key] ?? noDay
 }
 
-export function completedCount(day: DayRecord, habits: Habit[]): number {
+function completedCount(day: DayRecord, habits: Habit[]): number {
   return dailyHabits(habits).reduce((n, h) => n + (day.habits[h.id] ? 1 : 0), 0)
 }
 

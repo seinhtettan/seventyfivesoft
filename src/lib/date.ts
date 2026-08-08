@@ -1,6 +1,6 @@
 import { addDays, differenceInCalendarDays, format, parseISO, startOfDay } from 'date-fns'
 
-export const ISO = 'yyyy-MM-dd'
+const ISO = 'yyyy-MM-dd'
 
 export function toKey(d: Date): string {
   return format(d, ISO)
@@ -82,4 +82,4 @@ export function greetingFor(d: Date): string {
   return 'Rest well'
 }
 
-export { addDays, differenceInCalendarDays, format }
+export { addDays, format }

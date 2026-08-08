@@ -5,7 +5,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export const LB_PER_KG = 2.2046226218
+const LB_PER_KG = 2.2046226218
 
 export function toDisplayWeight(lb: number | undefined, unit: 'lb' | 'kg'): number | undefined {
   if (lb == null || Number.isNaN(lb)) return undefined
