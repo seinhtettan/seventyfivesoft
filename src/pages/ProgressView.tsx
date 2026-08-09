@@ -1,14 +1,4 @@
-import { useMemo, useState } from 'react'
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { useApp } from '@/store/useApp'
 import { format, fromKey, todayKey } from '@/lib/date'
@@ -216,67 +206,12 @@ export function ProgressView() {
               : 'One more check-in and a line will appear here.'}
           </p>
         ) : (
-          <div className="mt-4 h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 10, right: 8, bottom: 0, left: -18 }}>
-                <defs>
-                  <linearGradient id="weightFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#cf9d94" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="#cf9d94" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="#ebe0d3" strokeDasharray="4 6" vertical={false} />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fill: '#a6968a', fontSize: 11 }}
-                  axisLine={{ stroke: '#ebe0d3' }}
-                  tickLine={false}
-                />
-                <YAxis
-                  domain={domain}
-                  tick={{ fill: '#a6968a', fontSize: 11 }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={52}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: '#fffdfa',
-                    border: '1px solid #ebe0d3',
-                    borderRadius: 14,
-                    fontSize: 12,
-                    color: '#4c3d33',
-                    boxShadow: '0 18px 40px -18px rgba(76,61,51,0.22)',
-                  }}
-                  labelStyle={{ color: '#a6968a', marginBottom: 4 }}
-                  formatter={(v) => [`${v} ${unit}`, 'Weight']}
-                />
-                {goal != null && (
-                  <ReferenceLine
-                    y={toDisplayWeight(goal, unit)}
-                    stroke="#7f9779"
-                    strokeDasharray="5 5"
-                    label={{
-                      value: 'goal',
-                      position: 'insideTopRight',
-                      fill: '#7f9779',
-                      fontSize: 11,
-                      dy: -4,
-                    }}
-                  />
-                )}
-                <Area
-                  type="monotone"
-                  dataKey="weight"
-                  stroke="#cf9d94"
-                  strokeWidth={2.5}
-                  fill="url(#weightFill)"
-                  dot={{ r: 4, fill: '#fffdfa', stroke: '#cf9d94', strokeWidth: 2 }}
-                  activeDot={{ r: 6, fill: '#cf9d94', stroke: '#fffdfa', strokeWidth: 2 }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          <WeightTrendChart
+            data={chartData}
+            domain={domain}
+            goal={toDisplayWeight(goal, unit)}
+            unit={unit}
+          />
         )}
       </section>
 
@@ -338,6 +273,149 @@ export function ProgressView() {
       <p className="pb-2 text-center font-hand text-xl text-brown-faint">
         the scale is not the story ♡
       </p>
+    </div>
+  )
+}
+
+interface WeightChartPoint {
+  date: string
+  label: string
+  weight: number
+}
+
+function WeightTrendChart({
+  data,
+  domain,
+  goal,
+  unit,
+}: {
+  data: WeightChartPoint[]
+  domain: [number, number]
+  goal: number | undefined
+  unit: 'lb' | 'kg'
+}) {
+  const container = useRef<HTMLDivElement>(null)
+  const descriptionId = useId()
+  const [width, setWidth] = useState(640)
+  const height = 240
+  const margin = { top: 14, right: 16, bottom: 30, left: 48 }
+  const plotWidth = Math.max(1, width - margin.left - margin.right)
+  const plotHeight = height - margin.top - margin.bottom
+  const range = Math.max(1, domain[1] - domain[0])
+  const x = (index: number) => margin.left + (index / Math.max(1, data.length - 1)) * plotWidth
+  const y = (weight: number) => margin.top + ((domain[1] - weight) / range) * plotHeight
+  const points = data.map((point, index) => ({ ...point, x: x(index), y: y(point.weight) }))
+  const line = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
+  const area = `${line} L ${points.at(-1)!.x} ${margin.top + plotHeight} L ${points[0]!.x} ${margin.top + plotHeight} Z`
+  const ticks = Array.from({ length: 4 }, (_, index) => domain[0] + (index / 3) * range)
+  const labelIndexes = new Set([0, Math.floor((data.length - 1) / 2), data.length - 1])
+
+  useEffect(() => {
+    const element = container.current
+    if (element === null) return
+    const updateWidth = (nextWidth: number) => {
+      if (nextWidth > 0) setWidth(nextWidth)
+    }
+    updateWidth(element.getBoundingClientRect().width)
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (entry !== undefined) updateWidth(entry.contentRect.width)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
+  return (
+    <div ref={container} className="mt-4 h-60 w-full">
+      <svg
+        width={width}
+        height={height}
+        className="block h-60 w-full overflow-visible"
+        role="img"
+        aria-label={`Weight trend in ${unit}`}
+        aria-describedby={descriptionId}
+      >
+        <defs>
+          <linearGradient id="weightFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#cf9d94" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="#cf9d94" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {ticks.map((tick) => (
+          <g key={tick}>
+            <line
+              x1={margin.left}
+              x2={margin.left + plotWidth}
+              y1={y(tick)}
+              y2={y(tick)}
+              stroke="#ebe0d3"
+              strokeDasharray="4 6"
+            />
+            <text x={margin.left - 8} y={y(tick) + 4} textAnchor="end" fill="#a6968a" fontSize="11">
+              {Number(tick.toFixed(1))}
+            </text>
+          </g>
+        ))}
+        {goal !== undefined && goal >= domain[0] && goal <= domain[1] && (
+          <g>
+            <line
+              x1={margin.left}
+              x2={margin.left + plotWidth}
+              y1={y(goal)}
+              y2={y(goal)}
+              stroke="#7f9779"
+              strokeDasharray="5 5"
+            />
+            <text
+              x={margin.left + plotWidth - 4}
+              y={y(goal) - 6}
+              textAnchor="end"
+              fill="#7f9779"
+              fontSize="11"
+            >
+              goal
+            </text>
+          </g>
+        )}
+        <path d={area} fill="url(#weightFill)" />
+        <path d={line} fill="none" stroke="#cf9d94" strokeWidth="2.5" strokeLinejoin="round" />
+        {points.map((point, index) => (
+          <g key={`${point.date}-${index}`}>
+            <circle cx={point.x} cy={point.y} r="4" fill="#fffdfa" stroke="#cf9d94" strokeWidth="2">
+              <title>{`${point.label}: ${point.weight} ${unit}`}</title>
+            </circle>
+            {labelIndexes.has(index) && (
+              <text x={point.x} y={height - 8} textAnchor="middle" fill="#a6968a" fontSize="11">
+                {point.label}
+              </text>
+            )}
+          </g>
+        ))}
+      </svg>
+      <div id={descriptionId} className="sr-only">
+        <p>
+          {goal === undefined
+            ? 'No goal weight is set.'
+            : `Goal weight: ${Number(goal.toFixed(1))} ${unit}.`}
+        </p>
+        <table>
+          <caption>Weight trend data</caption>
+          <thead>
+            <tr>
+              <th scope="col">Date</th>
+              <th scope="col">Weight</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((point, index) => (
+              <tr key={`${point.date}-${index}`}>
+                <td>{point.label}</td>
+                <td>{`${point.weight} ${unit}`}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

@@ -1,11 +1,10 @@
 import { useState } from 'react'
-import { motion } from 'framer-motion'
 import { ArrowLeft, ArrowRight, Check, Sparkles } from 'lucide-react'
 import type { Habit, Profile, WeightUnit } from '@/lib/types'
 import { CHALLENGE_LENGTH, defaultHabits } from '@/lib/defaults'
 import { addDays, endDate, format, fromKey, toKey, today } from '@/lib/date'
 import { useApp } from '@/store/useApp'
-import { cn } from '@/lib/utils'
+import { cn, fromDisplayWeight } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Input } from '@/components/ui/input'
@@ -20,7 +19,6 @@ export function Onboarding() {
   const finishOnboarding = useApp((s) => s.finishOnboarding)
 
   const [step, setStep] = useState(0)
-  const [dir, setDir] = useState(1)
   const [startKey, setStartKey] = useState(() => toKey(today()))
   const [totalDays, setTotalDays] = useState(CHALLENGE_LENGTH)
   const [month, setMonth] = useState(() => today())
@@ -39,7 +37,6 @@ export function Onboarding() {
   const last = endDate(startKey, totalDays)
 
   const go = (next: number) => {
-    setDir(next > step ? 1 : -1)
     setStep(next)
   }
 
@@ -48,7 +45,18 @@ export function Onboarding() {
 
   const submit = () => {
     finishOnboarding({
-      profile: { ...profile, name: profile.name.trim() || 'friend' },
+      profile: {
+        ...profile,
+        name: profile.name.trim() || 'friend',
+        startWeight:
+          profile.startWeight === undefined
+            ? undefined
+            : fromDisplayWeight(profile.startWeight, unit),
+        goalWeight:
+          profile.goalWeight === undefined
+            ? undefined
+            : fromDisplayWeight(profile.goalWeight, unit),
+      },
       challenge: { startDate: startKey, totalDays },
       habits,
       unit,
@@ -97,15 +105,8 @@ export function Onboarding() {
         </ol>
 
         <div className="overflow-hidden rounded-2xl border border-line bg-shell/80 p-6 shadow-lift backdrop-blur-sm md:p-8">
-          {/* Keyed on `step` so each panel remounts and plays its entrance.
-              Deliberately no exit animation: an interrupted exit can strand a
-              stale panel on screen while the footer moves on. */}
-          <motion.div
-            key={step}
-            initial={{ opacity: 0, x: dir * 24 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-          >
+          {/* Keyed on `step` so each panel remounts and plays its CSS entrance. */}
+          <div key={step} className="animate-fade-up">
               {/* ── Step 1 · dates ── */}
               {step === 0 && (
                 <div className="space-y-6">
@@ -192,8 +193,8 @@ export function Onboarding() {
                   <div>
                     <h2 className="font-serif text-3xl text-brown">A little about you</h2>
                     <p className="mt-1.5 text-sm font-light text-brown-soft">
-                      Only your name is needed. Everything else is optional — and stays on this
-                      device.
+                      Only your name is needed. Everything else is optional and stays available
+                      offline on your devices.
                     </p>
                   </div>
 
@@ -380,7 +381,7 @@ export function Onboarding() {
                   </p>
                 </div>
               )}
-          </motion.div>
+          </div>
 
           {/* Footer nav */}
           <div className="mt-8 flex items-center justify-between border-t border-line pt-6">
@@ -405,7 +406,7 @@ export function Onboarding() {
         </div>
 
         <p className="mt-6 text-center text-xs font-light text-brown-faint">
-          Everything is stored locally in this browser. No account, no cloud.
+          Your data works offline and syncs through your private home server.
         </p>
       </div>
     </div>
