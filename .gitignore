@@ -10,6 +10,7 @@ node_modules
 
 # Build output
 dist
+dist-server
 dist-ssr
 dev-dist
 *.local
@@ -34,6 +35,9 @@ coverage
 *.njsproj
 *.sln
 *.sw?
+
+# Local application data
+.data/
 
 # Local agent/tooling config
 .claude

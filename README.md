@@ -1,148 +1,192 @@
 # 75 Soft
 
-A personal, bounded wellness tracker — a Pinterest-style digital journal for a 75-day
-challenge you define yourself. Consistency over perfection.
+A private, offline-first wellness journal for a bounded challenge you define yourself.
+Consistency over perfection.
 
-No backend, no account. Everything lives in your browser.
+The app is one TypeScript deployment:
 
-## Running it
+- Vite + React PWA for the interface.
+- IndexedDB as each browser's durable working database.
+- A transactional local outbox for edits made offline.
+- A small Hono/Node API for record-level synchronization.
+- SQLite as the central shared database.
+
+There is no separate backend service, account model, or analytics service. The intended
+installation is for one person and should be protected at the edge, such as with Cloudflare
+Access.
+
+## Development
+
+Install dependencies:
 
 ```bash
-npm install
+npm ci
 ```
+
+Run the API in one terminal:
+
+```bash
+npm run dev:server
+```
+
+Run Vite in another:
 
 ```bash
 npm run dev
 ```
 
-Then open the printed localhost URL. To build for production:
+Vite proxies `/api/*` and `/healthz` to the API on port 8080. Open the URL printed by Vite.
+The development database defaults to `.data/seventyfivesoft.sqlite`.
+
+Run all checks:
+
+```bash
+npm run check
+```
+
+Build and run the production server locally:
 
 ```bash
 npm run build
+DATABASE_PATH=.data/seventyfivesoft.sqlite npm start
 ```
 
-`npm run preview` serves the built output.
+The production Node process serves both the API and the built SPA on port 8080.
 
 ## How it works
 
-**First run** walks you through four steps: your date window (pretty date picker, end date
-auto-fills to 75 days and the length is adjustable), your profile, your habits, and a
-review before you lock it in. All of it is editable later in Settings.
-
-**Daily habits** are ticked on the dashboard. Some carry an optional number alongside them
-— minutes walked, glasses of water, hours slept — which feed the weekly averages.
-
-**Weekly habits** (Pilates by default) are counted per week against a target of 2, with a
-third session shown as a bonus. They never count against a daily total, and a missed day
-never resets anything.
-
-### Pages
+The first run asks for the challenge window, profile, and habits. Daily habits, weekly
+habits, optional metrics, journal entries, reflections, and progress check-ins are editable
+offline.
 
 | Page | What's there |
 | --- | --- |
-| Today | Progress ring, day counter, greeting, habit checklist, weekly habit card, journal nudge |
-| This week | Completion ring, 7-day strip, per-habit tallies and streaks, metric averages, reflection |
-| 75 days | Every day as a tile — day number, date, completion, soft colour states |
-| Progress | Optional weight/mood/energy check-ins and a trend chart against your goal |
-| Journal | Today's win, gratitude, how you felt, notes — plus every earlier page |
-| Settings | Dates, habits, profile, weights, lb/kg, export & restore, reset |
+| Today | Progress, day counter, habit checklist, weekly habit summary, journal nudge |
+| This week | Seven-day view, habit totals, metric averages, weekly reflection |
+| 75 days | Every challenge day with completion state |
+| Progress | Optional weight, mood, energy, and a lightweight SVG trend chart |
+| Journal | Today's prompts and previous entries |
+| Settings | Dates, habits, profile, units, sync conflicts, backup/restore, reset |
 
-## Data & persistence
+Weight is stored canonically and converted for display. Changing between pounds and
+kilograms does not reinterpret existing measurements.
 
-State is held in a [zustand](https://zustand.docs.pmnd.rs/) store persisted to
-`localStorage` under the key **`75soft:v1`** — habits, ticked days, logged metrics, journal
-entries, weekly reflections, progress check-ins, profile and settings. Close the tab,
-reopen it, and everything is where you left it.
+## Offline persistence and synchronization
 
-Weight is always stored canonically in pounds and converted for display, so switching
-between lb and kg is lossless.
+Zustand provides reactive UI state but is not the durable database. IndexedDB stores:
 
-Settings has **Export a backup** (downloads a JSON file) and **Restore from file**, which
-is the way to move data to another browser or device — there is no sync.
+- normalized records;
+- the current workspace snapshot;
+- pending outbox mutations;
+- the server cursor and browser replica ID;
+- unresolved conflicts.
 
-Clearing your browser's site data for this origin erases the challenge, so take a backup
-before you do that.
+A local edit updates the workspace, normalized records, and outbox in one IndexedDB
+transaction. Synchronization runs at startup, after edits, when the browser comes online or
+regains focus, and periodically while visible.
 
-## Installing it on an iPhone
+`POST /api/sync` sends the browser cursor and pending mutations. Mutation IDs make retries
+idempotent. Per-record base versions detect stale writes; device clocks do not decide the
+winner. Deletions propagate as versioned tombstones so a browser that was offline for a long
+time still learns what was removed.
 
-The app is a PWA, so it installs to the home screen and runs without browser chrome.
+If two devices changed the same record, Settings offers two explicit choices:
 
-1. Host the `dist/` folder over **HTTPS** (service workers won't register otherwise —
-   `localhost` is the only exception).
-2. Open the site in **Safari** on the iPhone.
-3. Share → **Add to Home Screen**.
+- **Keep this device** rebases and retries the local change.
+- **Use synced version** discards the pending local change and installs the server copy.
 
-It then launches fullscreen with its own icon, no address bar, and works with no
-connection at all — the app shell, icons and fonts are precached, so you can tick habits
-and write journal entries on a plane. Verified by loading it with the server stopped.
+The service worker never caches `/api/*` or `/healthz`.
 
-**One hosting requirement:** it's a single-page app, so the host must rewrite unknown
-paths to `index.html`, otherwise a refresh on `/week` or a deep link 404s. On Netlify
-that's a `_redirects` file containing `/* /index.html 200`; Vercel and Cloudflare Pages do
-it automatically for SPAs; nginx needs `try_files $uri /index.html`.
+### Migration from the browser-only version
 
-### What's already handled for iOS
+On first launch, an existing `localStorage["75soft:v1"]` snapshot is normalized into
+IndexedDB and queued for upload. The legacy key is removed only after that transaction
+succeeds. Existing export files remain importable from Settings.
 
-- `apple-touch-icon.png` at 180×180 — iOS ignores SVG icons and would otherwise use a
-  blurry screenshot of the page
-- Manifest with `display: standalone`, maskable icon, and cream theme/background colour so
-  there's no white flash on launch
-- Safe-area insets top and bottom, so the header clears the Dynamic Island and the tab bar
-  clears the home indicator
-- Form fields are 16px on phones — below that, iOS zooms the whole page when you tap a
-  field, which is the single most common way an installed web app feels broken
-- Overscroll chaining and long-press callouts disabled, so it doesn't rubber-band or offer
-  to select text like a web page
+Settings still provides **Export a backup** and **Restore from file** as a human-readable
+backup and recovery path. Clearing one browser's site data removes that browser's offline
+copy, not the central SQLite database; the browser downloads the shared records again after
+reopening the app.
 
-Because everything is stored locally, use **Settings → Export a backup** now and then; that
-file is the only copy if the device is wiped or you clear site data.
+## HTTP surface
 
-## Self-hosting (Docker / Kubernetes)
+- `GET /healthz` — liveness/readiness and current synchronization cursor.
+- `GET /api/health` — same health response.
+- `POST /api/sync` — validated synchronization request, limited to 1,000,000 bytes.
 
-Every push to `master` builds a multi-arch image and publishes it to GHCR:
+API responses use `Cache-Control: no-store`. Fingerprinted frontend assets are immutable;
+the SPA shell, manifest, and service worker are revalidated.
 
-```
-ghcr.io/seinhtettan/seventyfivesoft:latest
-```
+## Configuration
 
-Also tagged `sha-<commit>` for pinning. Built for `linux/amd64` and `linux/arm64`, so it
-runs on a mini PC or a Pi cluster either way. The workflow is
-`.github/workflows/publish-image.yml` and authenticates with the built-in `GITHUB_TOKEN` —
-there's no secret to create.
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PORT` | `8080` | Node listen port |
+| `DATABASE_PATH` | `.data/seventyfivesoft.sqlite` | Writable SQLite database path |
+| `STATIC_ROOT` | `dist` | Built Vite asset directory |
 
-Run it:
+The API has no application-level authentication because this is a single-person home app.
+Do not expose it directly to the public internet. Put the whole origin behind Cloudflare
+Access or an equivalent trusted reverse proxy.
+
+## Docker
+
+Build and run with persistent storage:
 
 ```bash
-docker run --rm -p 8080:8080 ghcr.io/seinhtettan/seventyfivesoft:latest
+docker build -t seventyfivesoft:local .
+docker run --rm \
+  -p 8080:8080 \
+  -v seventyfivesoft-data:/data \
+  seventyfivesoft:local
 ```
 
-nginx serving static files on port 8080 as uid 101 — no backend, no database, no
-environment config. All data lives in each browser, so it's stateless and idles at a few
-MB. `/healthz` returns 200 for probes.
+The image runs one non-root Node process. It includes a health check and stores the database
+at `/data/seventyfivesoft.sqlite` by default. The build installs native build tools only in
+intermediate stages so `better-sqlite3` works on both amd64 and arm64 without carrying a
+compiler in the runtime image.
 
-Two things to know: the GHCR package **publishes private by default**, so grant pull
-access or flip it to public before something else tries to pull it. And serve it over
-**HTTPS** — service workers don't register on plain `http` (only `localhost` is exempt),
-so without TLS you lose offline support and Add to Home Screen.
+Every push to `master` publishes multi-architecture images to:
 
-### Cache headers
+```text
+ghcr.io/seinhtettan/seventyfivesoft:latest
+ghcr.io/seinhtettan/seventyfivesoft:sha-<commit>
+```
 
-`docker/nginx.conf` deliberately splits caching in two: `/assets/*` is fingerprinted by
-Vite so it's `immutable` for a year, while `sw.js`, `registerSW.js`, `index.html` and the
-manifest are `no-cache`. If the service worker or the shell were cached, an installed
-home-screen app would keep booting the old build and never see a deploy.
+## Kubernetes deployment requirements
+
+SQLite has one writer. Run exactly one application replica with a `Recreate` rollout
+strategy and a persistent volume mounted at `/data`. If the volume is provisioned with root
+ownership, set pod `fsGroup: 1000` for the image's non-root user.
+
+Recommended production storage shape:
+
+- local-path PVC for the live SQLite database;
+- Litestream replication to a separate NAS/NFS-backed destination;
+- Cloudflare Tunnel for ingress;
+- Cloudflare Access restricted to the intended person's email.
+
+Do not run multiple active application replicas against the same SQLite file.
+
+## Database operations
+
+Schema migrations run automatically in ordered transactions during startup. Concurrent
+startup is serialized with `BEGIN IMMEDIATE`; a failed migration rolls back. The server
+refuses to open a schema version newer than the running binary.
+
+SQLite runs in WAL mode. For raw file backups, stop the process or use SQLite's backup
+mechanism rather than copying only the main database while it is active. Litestream is the
+recommended continuous backup mechanism. Keep Settings exports as an additional portable
+backup.
+
+## PWA installation
+
+Serve the app over HTTPS, open it in Safari on iPhone, then use **Share → Add to Home
+Screen**. The shell and icons are precached, and journal/habit edits continue working without
+a connection. Deep links resolve to the SPA shell both online and offline.
 
 ## Stack
 
-Vite · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui-style Radix primitives ·
-zustand · date-fns · react-day-picker · Recharts · Framer Motion · lucide-react ·
-vite-plugin-pwa (Workbox).
-
-Type `Cormorant Garamond` (headings), `Jost` (body), `Caveat` (handwritten accents),
-loaded from Google Fonts.
-
-## Layout notes
-
-Responsive from 375px up: a bottom tab bar and stacked cards on phones, a fixed left rail
-on tablets and desktop. The Progress page is code-split so the charting library only loads
-if you open it.
+Vite · React 19 · TypeScript · Tailwind CSS v4 · Radix primitives · Zustand · IndexedDB ·
+Hono · Node 22 · better-sqlite3 · Zod · date-fns · react-day-picker · lucide-react ·
+vite-plugin-pwa/Workbox.

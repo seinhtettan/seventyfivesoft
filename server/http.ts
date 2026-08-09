@@ -12,6 +12,16 @@ function json(body: unknown, status = 200): Response {
   })
 }
 
+function methodNotAllowed(allowed: 'GET' | 'POST'): Response {
+  return Response.json(
+    { message: 'Method not allowed.' },
+    {
+      status: 405,
+      headers: { allow: allowed, 'cache-control': 'no-store' },
+    },
+  )
+}
+
 async function readJson(request: Request): Promise<unknown> {
   const declaredLength = Number(request.headers.get('content-length') ?? 0)
   if (declaredLength > maximumJsonBytes) throw new PayloadTooLargeError()
@@ -38,13 +48,13 @@ export async function handleApiRequest(
   const { pathname } = new URL(request.url)
 
   if (pathname === '/api/health' || pathname === '/healthz') {
-    if (request.method !== 'GET') return json({ message: 'Method not allowed.' }, 405)
+    if (request.method !== 'GET') return methodNotAllowed('GET')
     const cursor = Number(database.prepare('SELECT COALESCE(MAX(sequence), 0) FROM sync_changes').pluck().get())
     return json({ status: 'ok', cursor })
   }
 
   if (pathname === '/api/sync') {
-    if (request.method !== 'POST') return json({ message: 'Method not allowed.' }, 405)
+    if (request.method !== 'POST') return methodNotAllowed('POST')
     try {
       const syncRequest = parseSyncRequest(await readJson(request))
       return json(synchronize(database, syncRequest))

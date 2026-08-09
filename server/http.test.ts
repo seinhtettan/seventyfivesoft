@@ -70,6 +70,22 @@ afterEach(() => {
 })
 
 describe('handleApiRequest', () => {
+  test.each([
+    ['POST', '/api/health', 'GET'],
+    ['GET', '/api/sync', 'POST'],
+  ])('advertises the allowed method for %s %s', async (method, requestPath, allowed) => {
+    const database = openTemporaryDatabase()
+
+    const response = await handleApiRequest(
+      database,
+      new Request(`http://localhost${requestPath}`, { method }),
+    )
+
+    expect(response.status).toBe(405)
+    expect(response.headers.get('allow')).toBe(allowed)
+    database.close()
+  })
+
   test('reports process and database health', async () => {
     const database = openTemporaryDatabase()
 
