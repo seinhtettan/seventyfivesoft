@@ -49,7 +49,13 @@ describe('openDatabase', () => {
     ])
     expect(database.pragma('foreign_keys', { simple: true })).toBe(1)
     expect(database.pragma('journal_mode', { simple: true })).toBe('wal')
-    expect(database.prepare('SELECT version FROM schema_migrations').pluck().all()).toEqual([1])
+    expect(database.prepare('SELECT version FROM schema_migrations').pluck().all()).toEqual([1, 2])
+    expect(
+      database
+        .prepare<[], { name: string }>("SELECT name FROM pragma_table_info('sync_changes')")
+        .all()
+        .map(({ name }) => name),
+    ).toContain('client_created_at')
 
     database.close()
   })
@@ -158,7 +164,7 @@ describe('openDatabase', () => {
 
       expect(failures).toEqual([])
       const database = openDatabase(file)
-      expect(database.prepare('SELECT version FROM schema_migrations').pluck().all()).toEqual([1])
+      expect(database.prepare('SELECT version FROM schema_migrations').pluck().all()).toEqual([1, 2])
       database.close()
     },
     30_000,
@@ -169,7 +175,7 @@ describe('openDatabase', () => {
     openDatabase(file).close()
     const database = openDatabase(file)
 
-    expect(database.prepare('SELECT COUNT(*) FROM schema_migrations').pluck().get()).toBe(1)
+    expect(database.prepare('SELECT COUNT(*) FROM schema_migrations').pluck().get()).toBe(2)
 
     database.close()
   })

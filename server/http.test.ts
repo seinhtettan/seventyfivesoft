@@ -13,6 +13,56 @@ function openTemporaryDatabase() {
   return openDatabase(path.join(directory, 'app.sqlite'))
 }
 
+function challengeMutation() {
+  return {
+    id: 'mutation-1',
+    deviceId: 'phone',
+    entityType: 'challenge',
+    entityId: 'challenge-a',
+    baseVersion: 0,
+    operation: 'upsert',
+    record: {
+      id: 'challenge-a',
+      title: '75 Soft',
+      startDate: '2026-08-09',
+      durationDays: 75,
+      startWeightGrams: null,
+      goalWeightGrams: null,
+      status: 'active',
+      createdAt: '2026-08-09T00:00:00.000Z',
+      deletedAt: null,
+    },
+    createdAt: '2026-08-09T00:00:00.000Z',
+  }
+}
+
+function habitMutation() {
+  return {
+    id: 'mutation-habit',
+    deviceId: 'phone',
+    entityType: 'habit',
+    entityId: 'habit-a',
+    baseVersion: 0,
+    operation: 'upsert',
+    record: {
+      id: 'habit-a',
+      challengeId: 'challenge-a',
+      name: 'Walk',
+      hint: null,
+      icon: 'walk',
+      cadence: 'daily',
+      weeklyTarget: null,
+      weeklyBonus: null,
+      sortOrder: 0,
+      activeFrom: '2026-08-09',
+      activeUntil: '2026-08-08',
+      createdAt: '2026-08-09T00:00:00.000Z',
+      deletedAt: null,
+    },
+    createdAt: '2026-08-09T00:00:00.000Z',
+  }
+}
+
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true })
@@ -65,8 +115,99 @@ describe('handleApiRequest', () => {
       }),
     )
 
+    const ambiguousIdentifier = await handleApiRequest(
+      database,
+      new Request('http://localhost/api/sync', {
+        method: 'POST',
+        body: JSON.stringify({ deviceId: 'phone/other', cursor: 0, mutations: [] }),
+      }),
+    )
+
     expect(malformed.status).toBe(400)
     expect(invalid.status).toBe(422)
+    expect(ambiguousIdentifier.status).toBe(422)
+    database.close()
+  })
+
+  test('returns structured client errors for semantic protocol violations', async () => {
+    const database = openTemporaryDatabase()
+    const mismatched = { ...challengeMutation(), deviceId: 'laptop' }
+
+    const response = await handleApiRequest(
+      database,
+      new Request('http://localhost/api/sync', {
+        method: 'POST',
+        body: JSON.stringify({ deviceId: 'phone', cursor: 0, mutations: [mismatched] }),
+      }),
+    )
+
+    expect(response.status).toBe(422)
+    await expect(response.json()).resolves.toEqual({
+      message: 'Mutation device does not match request device.',
+      code: 'mutation_device_mismatch',
+    })
+    database.close()
+  })
+
+  test('returns a structured client error when record invariants are invalid', async () => {
+    const database = openTemporaryDatabase()
+    const response = await handleApiRequest(
+      database,
+      new Request('http://localhost/api/sync', {
+        method: 'POST',
+        body: JSON.stringify({
+          deviceId: 'phone',
+          cursor: 0,
+          mutations: [challengeMutation(), habitMutation()],
+        }),
+      }),
+    )
+
+    expect(response.status).toBe(422)
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ message: 'Sync request is invalid.' }),
+    )
+    expect(database.prepare('SELECT COUNT(*) FROM challenges').pluck().get()).toBe(0)
+    database.close()
+  })
+
+  test('returns a structured client error for missing related records', async () => {
+    const database = openTemporaryDatabase()
+    const orphan = {
+      id: 'orphan-check-in',
+      deviceId: 'phone',
+      entityType: 'checkIn',
+      entityId: 'check-in-a',
+      baseVersion: 0,
+      operation: 'upsert',
+      record: {
+        id: 'check-in-a',
+        challengeId: 'missing-challenge',
+        entryDate: '2026-08-09',
+        weightGrams: null,
+        mood: null,
+        energy: null,
+        notes: null,
+        createdAt: '2026-08-09T00:00:00.000Z',
+        deletedAt: null,
+      },
+      createdAt: '2026-08-09T00:00:00.000Z',
+    }
+
+    const response = await handleApiRequest(
+      database,
+      new Request('http://localhost/api/sync', {
+        method: 'POST',
+        body: JSON.stringify({ deviceId: 'phone', cursor: 0, mutations: [orphan] }),
+      }),
+    )
+
+    expect(response.status).toBe(422)
+    await expect(response.json()).resolves.toEqual({
+      message: 'Mutation references a related record that does not exist.',
+      code: 'related_record_missing',
+    })
+    expect(database.prepare('SELECT COUNT(*) FROM sync_devices').pluck().get()).toBe(0)
     database.close()
   })
 

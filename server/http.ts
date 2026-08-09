@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3'
 import { ZodError } from 'zod'
 import { parseSyncRequest } from '../src/lib/sync'
-import { synchronize } from './sync'
+import { SyncProtocolError, synchronize } from './sync'
 
 const maximumJsonBytes = 1_000_000
 
@@ -27,6 +27,10 @@ async function readJson(request: Request): Promise<unknown> {
 class MalformedJsonError extends Error {}
 class PayloadTooLargeError extends Error {}
 
+function hasSqliteCode(error: unknown, code: string): error is Error & { code: string } {
+  return error instanceof Error && 'code' in error && error.code === code
+}
+
 export async function handleApiRequest(
   database: Database.Database,
   request: Request,
@@ -47,6 +51,27 @@ export async function handleApiRequest(
     } catch (error) {
       if (error instanceof MalformedJsonError) return json({ message: 'Request body must be valid JSON.' }, 400)
       if (error instanceof PayloadTooLargeError) return json({ message: 'Request payload is too large.' }, 413)
+      if (hasSqliteCode(error, 'SQLITE_CONSTRAINT_FOREIGNKEY')) {
+        return json(
+          {
+            message: 'Mutation references a related record that does not exist.',
+            code: 'related_record_missing',
+          },
+          422,
+        )
+      }
+      if (hasSqliteCode(error, 'SQLITE_CONSTRAINT_CHECK')) {
+        return json(
+          {
+            message: 'Mutation violates a record constraint.',
+            code: 'record_constraint_failed',
+          },
+          422,
+        )
+      }
+      if (error instanceof SyncProtocolError) {
+        return json({ message: error.message, code: error.code }, error.status)
+      }
       if (error instanceof ZodError) {
         return json({ message: 'Sync request is invalid.', issues: error.issues }, 422)
       }

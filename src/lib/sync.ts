@@ -2,7 +2,11 @@ import { z } from 'zod'
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const timestampSchema = z.string().min(1)
-const identifierSchema = z.string().min(1)
+const identifierSchema = z
+  .string()
+  .min(1)
+  .regex(/^[A-Za-z0-9._:-]+$/, 'Identifiers may contain only letters, numbers, dots, underscores, colons, and hyphens.')
+const entityIdentitySchema = z.string().min(1)
 const nullableTimestampSchema = timestampSchema.nullable()
 
 export const recordSchemas = {
@@ -50,7 +54,11 @@ export const recordSchemas = {
       createdAt: timestampSchema,
       deletedAt: nullableTimestampSchema,
     })
-    .strict(),
+    .strict()
+    .refine(({ activeFrom, activeUntil }) => activeUntil === null || activeUntil >= activeFrom, {
+      path: ['activeUntil'],
+      message: 'Active-until date must not be before active-from date.',
+    }),
   habitMetric: z
     .object({
       id: identifierSchema,
@@ -66,7 +74,11 @@ export const recordSchemas = {
       createdAt: timestampSchema,
       deletedAt: nullableTimestampSchema,
     })
-    .strict(),
+    .strict()
+    .refine(({ minimum, maximum }) => maximum >= minimum, {
+      path: ['maximum'],
+      message: 'Maximum must be greater than or equal to minimum.',
+    }),
   habitEntry: z
     .object({
       challengeId: identifierSchema,
@@ -192,7 +204,7 @@ const syncMutationEnvelopeSchema = z
     id: identifierSchema,
     deviceId: identifierSchema,
     entityType: entityTypeSchema,
-    entityId: identifierSchema,
+    entityId: entityIdentitySchema,
     baseVersion: z.number().int().nonnegative(),
     operation: z.enum(['upsert', 'delete']),
     record: z.record(z.string(), z.unknown()),

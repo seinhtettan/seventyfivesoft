@@ -184,6 +184,13 @@ const migrations: Migration[] = [
       CREATE INDEX sync_changes_entity ON sync_changes(entity_type, entity_id, sequence);
     `,
   },
+  {
+    version: 2,
+    name: 'preserve client mutation timestamps',
+    sql: `
+      ALTER TABLE sync_changes ADD COLUMN client_created_at TEXT;
+    `,
+  },
 ]
 
 export function openDatabase(databasePath: string): Database.Database {
