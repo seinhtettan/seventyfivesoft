@@ -14,6 +14,7 @@ interface AppStateStorageOptions {
 
 export interface AppStateStorage extends StateStorage {
   ready: () => Promise<void>
+  writeRevision: () => number
   close: () => Promise<void>
 }
 
@@ -36,6 +37,7 @@ function materializedPersisted(value: string, entities: StoredEntity[]): string 
 export function createAppStateStorage(options: AppStateStorageOptions): AppStateStorage {
   const now = options.now ?? (() => new Date().toISOString())
   let writeChain = Promise.resolve()
+  let writeRevision = 0
 
   const storePromise = openLocalStore(options.databaseName)
   const replicaIdPromise = storePromise.then((store) => store.initializeDevice())
@@ -49,9 +51,27 @@ export function createAppStateStorage(options: AppStateStorageOptions): AppState
     void Promise.resolve(options.requestSync()).catch(() => undefined)
   }
 
+  const flushWrites = async (): Promise<void> => {
+    while (true) {
+      const pending = writeChain
+      await pending
+      if (pending === writeChain) return
+    }
+  }
+
+  const queueWrite = (write: () => Promise<void>): Promise<void> => {
+    const queued = writeChain.catch(() => undefined).then(write)
+    writeChain = queued
+    return queued
+  }
+
   return {
     async ready() {
       await replicaIdPromise
+      await flushWrites()
+    },
+    writeRevision() {
+      return writeRevision
     },
     async getItem(name) {
       await replicaIdPromise
@@ -73,15 +93,15 @@ export function createAppStateStorage(options: AppStateStorageOptions): AppState
       return legacy
     },
     async setItem(_name, value) {
-      writeChain = writeChain.then(() => persist(value))
-      await writeChain
+      writeRevision += 1
+      await queueWrite(() => persist(value))
     },
     async removeItem() {
-      writeChain = writeChain.then(async () => {
+      writeRevision += 1
+      await queueWrite(async () => {
         const store = await storePromise
         await store.writeWorkspace('')
       })
-      await writeChain
     },
     async close() {
       await writeChain

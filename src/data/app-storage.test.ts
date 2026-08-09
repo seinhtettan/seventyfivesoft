@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'
 import { deleteDB } from 'idb'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import type { AppState } from '@/lib/types'
-import { createAppStateStorage } from './app-storage'
+import { createAppStateStorage, type AppStateStorage } from './app-storage'
 import { openLocalStore } from './local-store'
 import { normalizeState } from './normalize-state'
 
@@ -94,6 +94,73 @@ describe('createAppStateStorage', () => {
     const store = await openLocalStore(name)
     await expect(store.pendingMutations()).resolves.toEqual([])
     await expect(store.readEntities()).resolves.toEqual([])
+    store.close()
+    await storage.close()
+  })
+
+  test('waits for queued workspace writes before reporting ready', async () => {
+    const name = databaseName()
+    const storage = createAppStateStorage({
+      databaseName: name,
+      legacyStorage: memoryStorage(),
+      requestSync: vi.fn(),
+    })
+    const value = persisted('Queued write')
+
+    const write = storage.setItem('75soft:v1', value)
+    expect(storage.writeRevision()).toBe(1)
+    await storage.ready()
+
+    const store = await openLocalStore(name)
+    await expect(store.readWorkspace()).resolves.toBe(value)
+    await expect(store.readEntities()).resolves.not.toHaveLength(0)
+    await write
+    store.close()
+    await storage.close()
+  })
+
+  test('waits for writes appended while an earlier write is flushing', async () => {
+    const name = databaseName()
+    const first = persisted('First write')
+    const second = persisted('Appended write')
+    let append = true
+    let storage: AppStateStorage
+    storage = createAppStateStorage({
+      databaseName: name,
+      legacyStorage: memoryStorage(),
+      requestSync: () => {
+        if (!append) return
+        append = false
+        void storage.setItem('75soft:v1', second)
+      },
+    })
+
+    const firstWrite = storage.setItem('75soft:v1', first)
+    await storage.ready()
+
+    const store = await openLocalStore(name)
+    await expect(store.readWorkspace()).resolves.toBe(second)
+    expect(storage.writeRevision()).toBe(2)
+    await firstWrite
+    store.close()
+    await storage.close()
+  })
+
+  test('recovers the write chain after a rejected write', async () => {
+    const name = databaseName()
+    const storage = createAppStateStorage({
+      databaseName: name,
+      legacyStorage: memoryStorage(),
+      requestSync: vi.fn(),
+    })
+
+    await expect(storage.setItem('75soft:v1', '{')).rejects.toThrow()
+    await storage.setItem('75soft:v1', persisted('Recovered write'))
+    await storage.ready()
+
+    const store = await openLocalStore(name)
+    await expect(store.readWorkspace()).resolves.toBe(persisted('Recovered write'))
+    expect(storage.writeRevision()).toBe(2)
     store.close()
     await storage.close()
   })

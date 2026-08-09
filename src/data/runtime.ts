@@ -2,6 +2,7 @@ import type { SyncConflict } from '@/lib/sync'
 import type { NormalizedEntity } from './normalize-state'
 import { createAppStateStorage } from './app-storage'
 import { openLocalStore } from './local-store'
+import { dispatchSettledValue } from './settled-value'
 import { syncNow } from './sync-client'
 
 export type SyncStatus = 'idle' | 'syncing' | 'offline' | 'error' | 'conflict'
@@ -47,12 +48,19 @@ export async function resolveSyncConflict(
   const store = await syncStorePromise
   await store.resolveConflict(mutationId, resolution, new Date().toISOString())
   if (resolution === 'server') {
-    const entities = await store.readEntities()
-    for (const listener of entityListeners) listener(entities)
+    await dispatchSettledEntities(store)
   }
   const remaining = await store.conflicts()
   updateStatus(remaining.length > 0 ? 'conflict' : 'idle')
   void requestSync()
+}
+
+async function dispatchSettledEntities(
+  store: Awaited<typeof syncStorePromise>,
+): Promise<void> {
+  await dispatchSettledValue(appStateStorage, () => store.readEntities(), (entities) => {
+    for (const listener of entityListeners) listener(entities)
+  })
 }
 
 export function requestSync(): Promise<void> {
@@ -73,8 +81,7 @@ export function requestSync(): Promise<void> {
     })
     .then(async () => {
       const store = await syncStorePromise
-      const entities = await store.readEntities()
-      for (const listener of entityListeners) listener(entities)
+      await dispatchSettledEntities(store)
       updateStatus((await store.conflicts()).length > 0 ? 'conflict' : 'idle')
     })
     .catch((error: unknown) => {
