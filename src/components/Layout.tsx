@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import {
   CalendarDays,
@@ -11,6 +12,7 @@ import type { LucideIcon } from 'lucide-react'
 import { useApp } from '@/store/useApp'
 import { clampedDayNumber, fromKey, prettyRange, today } from '@/lib/date'
 import { cn } from '@/lib/utils'
+import { getSyncStatus, subscribeSyncStatus, type SyncStatus } from '@/data/runtime'
 
 interface NavItem {
   to: string
@@ -43,6 +45,39 @@ function Wordmark({ compact = false }: { compact?: boolean }) {
       <p className="eyebrow mt-1.5 !tracking-[0.2em]">
         {prettyRange(challenge.startDate, challenge.totalDays)}
       </p>
+    </div>
+  )
+}
+
+const syncLabels: Record<SyncStatus, string> = {
+  idle: 'Synced',
+  syncing: 'Syncing…',
+  offline: 'Offline — changes saved',
+  error: 'Sync paused',
+  conflict: 'Needs review',
+}
+
+function SyncIndicator({ compact = false }: { compact?: boolean }) {
+  const status = useSyncExternalStore(subscribeSyncStatus, getSyncStatus, getSyncStatus)
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-2 text-xs text-brown-faint',
+        compact ? 'justify-end' : '',
+      )}
+      role="status"
+    >
+      <span
+        className={cn(
+          'size-2 rounded-full',
+          status === 'idle' && 'bg-sage',
+          status === 'syncing' && 'animate-pulse bg-gold',
+          status === 'offline' && 'bg-brown-faint',
+          status === 'error' && 'bg-gold-deep',
+          status === 'conflict' && 'bg-blush-deep',
+        )}
+      />
+      <span>{syncLabels[status]}</span>
     </div>
   )
 }
@@ -98,11 +133,14 @@ export function Layout() {
           ))}
         </nav>
 
-        <p className="mt-auto pt-8 font-hand text-lg leading-snug text-brown-faint">
-          Consistency over
-          <br />
-          perfection ♡
-        </p>
+        <div className="mt-auto space-y-4 pt-8">
+          <SyncIndicator />
+          <p className="font-hand text-lg leading-snug text-brown-faint">
+            Consistency over
+            <br />
+            perfection ♡
+          </p>
+        </div>
       </aside>
 
       {/* ── Content ── */}
@@ -123,6 +161,9 @@ export function Layout() {
               </span>
               <span className="text-xs text-brown-faint"> / {challenge.totalDays}</span>
             </div>
+          </div>
+          <div className="mt-2">
+            <SyncIndicator compact />
           </div>
         </header>
 

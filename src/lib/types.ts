@@ -4,6 +4,8 @@ export type WeightUnit = 'lb' | 'kg'
 
 /** Optional soft number logged alongside a habit (hours slept, minutes walked…) */
 export interface HabitMetric {
+  /** Stable replication identity. Legacy browser data may not have one yet. */
+  id?: string
   label: string
   unit: string
   target?: number
@@ -68,6 +70,8 @@ export interface Profile {
 }
 
 export interface Challenge {
+  /** Stable replication identity. Legacy browser data may not have one yet. */
+  id?: string
   /** yyyy-MM-dd */
   startDate: string
   /** total days, inclusive of start & end */
@@ -76,6 +80,7 @@ export interface Challenge {
 
 export interface Settings {
   unit: WeightUnit
+  timezone?: string
 }
 
 export interface AppState {

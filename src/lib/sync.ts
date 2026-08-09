@@ -231,6 +231,87 @@ export function parseSyncRequest(value: unknown): SyncRequest {
   }
 }
 
+const versionedRecordEnvelopeSchema = z
+  .record(z.string(), z.unknown())
+  .refine(
+    (record) => z.number().int().positive().safeParse(record.version).success,
+    'Record version must be a positive integer.',
+  )
+  .refine(
+    (record) => timestampSchema.safeParse(record.updatedAt).success,
+    'Record updatedAt must be an ISO timestamp.',
+  )
+
+const syncChangeEnvelopeSchema = z
+  .object({
+    sequence: z.number().int().positive(),
+    mutationId: identifierSchema,
+    deviceId: identifierSchema,
+    entityType: entityTypeSchema,
+    entityId: entityIdentitySchema,
+    recordVersion: z.number().int().positive(),
+    operation: z.enum(['upsert', 'delete']),
+    record: versionedRecordEnvelopeSchema,
+    createdAt: timestampSchema,
+  })
+  .strict()
+  .refine((change) => change.record.version === change.recordVersion, {
+    path: ['record', 'version'],
+    message: 'Record version must match recordVersion.',
+  })
+
+const syncConflictEnvelopeSchema = z
+  .object({
+    mutationId: identifierSchema,
+    entityType: entityTypeSchema,
+    entityId: entityIdentitySchema,
+    serverVersion: z.number().int().nonnegative(),
+    serverRecord: versionedRecordEnvelopeSchema.nullable(),
+  })
+  .strict()
+  .refine(
+    (conflict) =>
+      conflict.serverRecord === null || conflict.serverRecord.version === conflict.serverVersion,
+    {
+      path: ['serverRecord', 'version'],
+      message: 'Server record version must match serverVersion.',
+    },
+  )
+
+const syncResponseEnvelopeSchema = z
+  .object({
+    acknowledged: z.array(identifierSchema),
+    conflicts: z.array(syncConflictEnvelopeSchema),
+    changes: z.array(syncChangeEnvelopeSchema),
+    cursor: z.number().int().nonnegative(),
+  })
+  .strict()
+
+function parseVersionedRecord(entityType: EntityType, value: Record<string, unknown>): VersionedRecord {
+  const version = z.number().int().positive().parse(value.version)
+  const updatedAt = timestampSchema.parse(value.updatedAt)
+  const { version: _version, updatedAt: _updatedAt, ...domainRecord } = value
+  return { ...parseRecord(entityType, domainRecord), version, updatedAt }
+}
+
+export function parseSyncResponse(value: unknown): SyncResponse {
+  const response = syncResponseEnvelopeSchema.parse(value)
+  return {
+    ...response,
+    conflicts: response.conflicts.map((conflict) => ({
+      ...conflict,
+      serverRecord:
+        conflict.serverRecord === null
+          ? null
+          : parseVersionedRecord(conflict.entityType, conflict.serverRecord),
+    })),
+    changes: response.changes.map((change) => ({
+      ...change,
+      record: parseVersionedRecord(change.entityType, change.record),
+    })),
+  }
+}
+
 export function parseRecord(entityType: EntityType, value: unknown): SyncRecord {
   return recordSchemas[entityType].parse(value) as SyncRecord
 }

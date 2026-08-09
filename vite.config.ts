@@ -4,6 +4,8 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+export const navigateFallbackDenylist = [/^\/api(?:[/?]|$)/, /^\/healthz(?:[/?]|$)/]
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -38,6 +40,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
         // Deep links (/week, /journal…) resolve to the SPA shell when offline.
         navigateFallback: 'index.html',
+        navigateFallbackDenylist,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\//,
@@ -57,6 +60,12 @@ export default defineConfig({
       },
     }),
   ],
+  server: {
+    proxy: {
+      '/api': 'http://127.0.0.1:8080',
+      '/healthz': 'http://127.0.0.1:8080',
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, './src'),

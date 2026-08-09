@@ -22,8 +22,10 @@ function PageFallback() {
 }
 
 export default function App() {
+  const hydrated = useApp((s) => s.hydrated)
   const onboarded = useApp((s) => s.onboarded)
 
+  if (!hydrated) return <PageFallback />
   if (!onboarded) return <Onboarding />
 
   return (

@@ -1,7 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { AlertTriangle, Download, RotateCcw, Upload } from 'lucide-react'
 import { useApp } from '@/store/useApp'
 import type { WeightUnit } from '@/lib/types'
+import type { SyncConflict } from '@/lib/sync'
+import {
+  getSyncStatus,
+  listSyncConflicts,
+  resolveSyncConflict,
+  subscribeSyncStatus,
+} from '@/data/runtime'
 import { endDate, format, fromKey, toKey } from '@/lib/date'
 import { fromDisplayWeight, toDisplayWeight } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -49,6 +56,24 @@ export function SettingsView() {
   const [goalW, setGoalW] = useState('')
   const [resetOpen, setResetOpen] = useState(false)
   const [month, setMonth] = useState(() => fromKey(challenge.startDate))
+  const [conflicts, setConflicts] = useState<SyncConflict[]>([])
+  const syncStatus = useSyncExternalStore(subscribeSyncStatus, getSyncStatus, getSyncStatus)
+
+  useEffect(() => {
+    let active = true
+    if (syncStatus !== 'conflict') {
+      setConflicts([])
+      return () => {
+        active = false
+      }
+    }
+    void listSyncConflicts().then((next) => {
+      if (active) setConflicts(next)
+    })
+    return () => {
+      active = false
+    }
+  }, [syncStatus])
 
   // Keep the weight fields in sync with the chosen unit.
   useEffect(() => {
@@ -101,6 +126,11 @@ export function SettingsView() {
       }
     }
     reader.readAsText(file)
+  }
+
+  const resolveConflict = async (mutationId: string, resolution: 'local' | 'server') => {
+    await resolveSyncConflict(mutationId, resolution)
+    setConflicts(await listSyncConflicts())
   }
 
   return (
@@ -283,8 +313,45 @@ export function SettingsView() {
         <HabitEditor habits={habits} onChange={state.setHabits} />
       </Section>
 
+      {conflicts.length > 0 && (
+        <Section
+          title="Sync conflicts"
+          description="The same item changed on two devices while one was offline. Choose which copy to keep."
+        >
+          <div className="space-y-3">
+            {conflicts.map((conflict) => (
+              <div
+                key={conflict.mutationId}
+                className="rounded-xl border border-blush-deep/40 bg-blush-soft/35 p-4"
+              >
+                <p className="text-sm text-brown">
+                  {conflict.entityType} · {conflict.entityId}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => void resolveConflict(conflict.mutationId, 'local')}
+                  >
+                    Keep this device
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => void resolveConflict(conflict.mutationId, 'server')}
+                  >
+                    Use synced version
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
       {/* ── Data ── */}
-      <Section title="Your data" description="Everything lives in this browser only.">
+      <Section
+        title="Your data"
+        description="Available offline on this device and synchronized through your private home server."
+      >
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={exportData}>
             <Download /> Export a backup
@@ -322,7 +389,7 @@ export function SettingsView() {
               </DialogTitle>
               <DialogDescription>
                 This clears your habits, ticked days, journal entries, reflections and check-ins
-                from this browser. It can't be undone — consider exporting a backup first.
+                everywhere after the next sync. It can't be undone — consider exporting a backup first.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>

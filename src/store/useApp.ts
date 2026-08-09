@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
 import type {
   AppState,
   DayRecord,
@@ -10,23 +10,17 @@ import type {
   Settings,
   WeeklyReflection,
 } from '@/lib/types'
-import { CHALLENGE_LENGTH, defaultHabits } from '@/lib/defaults'
-import { todayKey } from '@/lib/date'
+import { appStateStorage } from '@/data/runtime'
+import { createInitialState } from '@/data/initial-state'
+import { mergePersistedState, withChallengeIdentity } from '@/data/merge-state'
 
 const emptyDay = (): DayRecord => ({ habits: {}, metrics: {} })
-
-const initialState: AppState = {
-  onboarded: false,
-  profile: { name: '' },
-  challenge: { startDate: todayKey(), totalDays: CHALLENGE_LENGTH },
-  habits: defaultHabits,
-  settings: { unit: 'lb' },
-  days: {},
-  reflections: {},
-  progress: [],
-}
+let markHydratedAfterRestore: (() => void) | undefined
+const initialState = createInitialState()
 
 interface Actions {
+  hydrated: boolean
+  setHydrated: (hydrated: boolean) => void
   finishOnboarding: (payload: {
     profile: Profile
     challenge: AppState['challenge']
@@ -57,15 +51,17 @@ interface Actions {
 export type AppStore = AppState & Actions
 
 export const useApp = create<AppStore>()(
-  persist(
+  persist<AppStore, [], [], AppState>(
     (set) => ({
       ...initialState,
+      hydrated: false,
+      setHydrated: (hydrated) => set({ hydrated }),
 
       finishOnboarding: ({ profile, challenge, habits, unit }) =>
         set((s) => ({
           onboarded: true,
           profile,
-          challenge,
+          challenge: { ...challenge, id: s.challenge.id ?? crypto.randomUUID() },
           habits,
           settings: { ...s.settings, unit },
         })),
@@ -134,14 +130,42 @@ export const useApp = create<AppStore>()(
 
       updateSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
 
-      resetAll: () => set({ ...initialState, challenge: { startDate: todayKey(), totalDays: CHALLENGE_LENGTH } }),
+      resetAll: () => set(createInitialState()),
 
-      importState: (state) => set((s) => ({ ...s, ...state })),
+      importState: (state) =>
+        set((current) => ({
+          ...current,
+          ...state,
+          ...(state.challenge === undefined
+            ? {}
+            : {
+                challenge: withChallengeIdentity(state.challenge),
+              }),
+        })),
     }),
     {
       name: '75soft:v1',
       version: 1,
+      storage: createJSONStorage<AppState>(() => appStateStorage),
+      partialize: (state) => ({
+        onboarded: state.onboarded,
+        profile: state.profile,
+        challenge: state.challenge,
+        habits: state.habits,
+        settings: state.settings,
+        days: state.days,
+        reflections: state.reflections,
+        progress: state.progress,
+      }),
+      merge: mergePersistedState,
+      onRehydrateStorage: () => (state, error) => {
+        if (error !== undefined) console.error('Failed to restore local application data.', error)
+        if (state === undefined) markHydratedAfterRestore?.()
+        else state.setHydrated(true)
+      },
     },
   ),
 )
+
+markHydratedAfterRestore = () => useApp.setState({ hydrated: true })
 
